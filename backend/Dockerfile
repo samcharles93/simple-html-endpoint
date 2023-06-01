@@ -17,7 +17,7 @@ FROM builder as dev-envs
 
 RUN <<EOF
 apk update
-apk add git
+apk add git netcat-openbsd
 EOF
 
 RUN <<EOF
@@ -29,6 +29,6 @@ COPY --from=gloursdocker/docker / /
 
 CMD [ "go", "run", "main.go" ]
 
-FROM scratch
+FROM alpine
 COPY --from=builder /code/bin/backend /usr/local/bin/backend
 CMD [ "/usr/local/bin/backend" ]

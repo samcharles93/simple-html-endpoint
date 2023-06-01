@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 )
 
 var db *sql.DB
+
+var ErrOrderNotFound = errors.New("order not found")
 
 func main() {
 	if os.Getenv("DOCKER") != "true" {
@@ -32,7 +35,8 @@ func main() {
 	connStr := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s;database=%s;",
 		dbHost, dbUser, dbPass, dbPort, dbName)
 
-	db, err := sql.Open("sqlserver", connStr)
+	var err error
+	db, err = sql.Open("sqlserver", connStr)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -50,9 +54,15 @@ func getOrderStatus(c *gin.Context) {
 
 	status, err := fetchOrderStatusFromDB(orderID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": fmt.Sprintf("Failed to retrieve the order status for ID %s", orderID),
-		})
+		if err == ErrOrderNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": fmt.Sprintf("Order with ID %s not found", orderID),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": fmt.Sprintf("Failed to retrieve the order status for ID %s", orderID),
+			})
+		}
 		return
 	}
 
@@ -72,15 +82,19 @@ func getOrderStatus(c *gin.Context) {
 }
 
 func fetchOrderStatusFromDB(orderID string) (string, error) {
-	query := "SELECT OrderStatus FROM Orders WHERE OrderID = ?"
-
-	row := db.QueryRow(query, orderID)
+	row := db.QueryRow("SELECT OrderStatus FROM Orders WHERE OrderID = @OrderID", sql.Named("OrderID", orderID))
 
 	var orderStatus string
 	err := row.Scan(&orderStatus)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			fmt.Println("Not Found Error")
+			return "", ErrOrderNotFound
+		}
+		fmt.Println("Error: ", err)
 		return "", err
 	}
 
+	fmt.Println("Order Status: ", orderStatus)
 	return orderStatus, nil
 }
